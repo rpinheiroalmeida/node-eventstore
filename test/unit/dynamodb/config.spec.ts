@@ -5,6 +5,7 @@ import 'mocha';
 import * as sinon from 'sinon';
 import * as sinonChai from 'sinon-chai';
 import { DynamoDBConfig } from '../../../src/dynamodb/config';
+import { EventsTableDefinitionDefaults } from '../../../src/dynamodb/events-table-definition';
 
 chai.use(sinonChai);
 
@@ -45,40 +46,57 @@ describe('Config', () => {
     });
 
     it('should create tables', async () => {
-        const dynamoDBConfig: DynamoDBConfig = new DynamoDBConfig({ region: 'any region' });
-
-        await dynamoDBConfig.createTables('events_table_name', 'aggregation_table_name');
-
-        expect(createTableStub).to.have.been.calledTwice;
-    });
-
-    it('check if table exists', async () => {
-        promiseStub.returns({ TableNames: ['table_a', 'table_b', 'table_c'] });
-        const dynamoDBConfig: DynamoDBConfig = new DynamoDBConfig({ region: 'any region' });
-        const exists = await dynamoDBConfig.exists('table_a', 'table_b');
-
-        expect(exists).to.have.been.true;
-        expect(listTablesStub).to.have.been.calledOnce;
-        expect(listTablesStub).to.have.been.calledWithExactly({});
-    });
-
-    it('should be false when just one table exists', async () => {
         promiseStub.returns({ TableNames: ['table_a', 'table_c'] });
-        const dynamoDBConfig: DynamoDBConfig = new DynamoDBConfig({ region: 'any region' });
-        const exists = await dynamoDBConfig.exists('table_a', 'table_b');
+        const dynamoDBConfig: DynamoDBConfig = new DynamoDBConfig({ region: 'any region' },
+            EventsTableDefinitionDefaults);
 
-        expect(exists).to.have.been.false;
+        await dynamoDBConfig.createTableIfNotExists();
+
         expect(listTablesStub).to.have.been.calledOnce;
-        expect(listTablesStub).to.have.been.calledWithExactly({});
+        expect(createTableStub).to.have.been.calledOnceWith({
+            AttributeDefinitions: [
+                { AttributeName: "aggregation_streamid", AttributeType: "S" },
+                { AttributeName: "commitTimestamp", AttributeType: "N" }
+            ],
+            KeySchema: [
+                { AttributeName: "aggregation_streamid", KeyType: "HASH" },
+                { AttributeName: "commitTimestamp", KeyType: "RANGE" }
+            ],
+            ProvisionedThroughput: { ReadCapacityUnits: 1, WriteCapacityUnits: 1 },
+            TableName: "events"
+        });
     });
 
-    it('should be false when none table exists', async () => {
+    it('should create tables when there is no table', async () => {
         promiseStub.returns({ TableNames: [] });
-        const dynamoDBConfig: DynamoDBConfig = new DynamoDBConfig({ region: 'any region' });
-        const exists = await dynamoDBConfig.exists('table_a', 'table_b');
+        const dynamoDBConfig: DynamoDBConfig = new DynamoDBConfig({ region: 'any region' },
+            EventsTableDefinitionDefaults);
 
-        expect(exists).to.have.been.false;
+        await dynamoDBConfig.createTableIfNotExists();
+
         expect(listTablesStub).to.have.been.calledOnce;
-        expect(listTablesStub).to.have.been.calledWithExactly({});
+        expect(createTableStub).to.have.been.calledOnceWith({
+            AttributeDefinitions: [
+                { AttributeName: "aggregation_streamid", AttributeType: "S" },
+                { AttributeName: "commitTimestamp", AttributeType: "N" }
+            ],
+            KeySchema: [
+                { AttributeName: "aggregation_streamid", KeyType: "HASH" },
+                { AttributeName: "commitTimestamp", KeyType: "RANGE" }
+            ],
+            ProvisionedThroughput: { ReadCapacityUnits: 1, WriteCapacityUnits: 1 },
+            TableName: "events"
+        });
+    });
+
+    it('should not create tables', async () => {
+        promiseStub.returns({ TableNames: ['table_a', 'events'] });
+        const dynamoDBConfig: DynamoDBConfig = new DynamoDBConfig({ region: 'any region' },
+            EventsTableDefinitionDefaults);
+
+        await dynamoDBConfig.createTableIfNotExists();
+
+        expect(listTablesStub).to.have.been.calledOnce;
+        expect(createTableStub).to.not.have.been.called;
     });
 });

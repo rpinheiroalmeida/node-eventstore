@@ -1,31 +1,36 @@
 import AWS = require('aws-sdk');
 import DynamoDB = require("aws-sdk/clients/dynamodb");
 import { AWSConfig } from "../aws/config";
+import { EventsTableDefinition, EventsTableDefinitionDefaults } from './events-table-definition';
 
 export class DynamoDBConfig {
+    private eventsTableDefinition: EventsTableDefinition;
     private dynamoDB: DynamoDB;
 
-    constructor(awsConfig: AWSConfig) {
+    constructor(awsConfig: AWSConfig, eventsTableDefinitionOption: EventsTableDefinition) {
         AWS.config.update(awsConfig);
+        this.eventsTableDefinition = { ...EventsTableDefinitionDefaults, ...eventsTableDefinitionOption };
 
         this.dynamoDB = new AWS.DynamoDB();
     }
 
-    public async createTables(eventTableName: string, aggregationTableName: string): Promise<void> {
-        await this.dynamoDB.createTable(this.aggregationsScheme(aggregationTableName)).promise();
-        await this.dynamoDB.createTable(this.eventsScheme(eventTableName)).promise();
+    public async createTableIfNotExists() {
+        const exists = await this.checkIfexists();
+        if (!exists) {
+            this.dynamoDB.createTable(this.eventsScheme()).promise();
+        }
     }
 
-    public async exists(eventTableName: string, aggregationTableName: string): Promise<boolean> {
+    public async checkIfexists(): Promise<boolean> {
         const tables = await this.dynamoDB.listTables({}).promise();
 
         return tables.TableNames.filter(tableName => {
 
-            return tableName === eventTableName || tableName === aggregationTableName;
-        }).length === 2;
+            return tableName === this.eventsTableDefinition.tableName;
+        }).length === 1;
     }
 
-    private eventsScheme(tableName: string) {
+    private eventsScheme() {
         return {
             AttributeDefinitions: [
                 {
@@ -48,40 +53,10 @@ export class DynamoDBConfig {
                 }
             ],
             ProvisionedThroughput: {
-                ReadCapacityUnits: 1,
-                WriteCapacityUnits: 1
+                ReadCapacityUnits: this.eventsTableDefinition.readCapacityUnits,
+                WriteCapacityUnits: this.eventsTableDefinition.writeCapacityUnits
             },
-            TableName: tableName,
-        };
-    }
-
-    private aggregationsScheme(tableName: string) {
-        return {
-            AttributeDefinitions: [
-                {
-                    AttributeName: "aggregation",
-                    AttributeType: "S"
-                },
-                {
-                    AttributeName: "stream",
-                    AttributeType: "S"
-                }
-            ],
-            KeySchema: [
-                {
-                    AttributeName: "aggregation",
-                    KeyType: "HASH",
-                },
-                {
-                    AttributeName: "stream",
-                    KeyType: "RANGE"
-                }
-            ],
-            ProvisionedThroughput: {
-                ReadCapacityUnits: 1,
-                WriteCapacityUnits: 1
-            },
-            TableName: tableName,
+            TableName: this.eventsTableDefinition.tableName,
         };
     }
 }

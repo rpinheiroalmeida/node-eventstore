@@ -45,10 +45,12 @@ export class SQSPublisher implements Publisher, HasSubscribers {
     }
 
     public async subscribe(aggregation: string, subscriber: Subscriber): Promise<Subscription> {
+
         const consumer = Consumer.create({
             handleMessage: subscriber,
             queueUrl: this.url,
         });
+
 
         consumer.start();
 
